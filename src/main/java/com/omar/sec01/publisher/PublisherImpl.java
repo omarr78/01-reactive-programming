@@ -1,4 +1,4 @@
-package com.omar.publisher;
+package com.omar.sec01.publisher;
 
 import org.reactivestreams.Publisher;
 import org.reactivestreams.Subscriber;

@@ -1,4 +1,4 @@
-package com.omar.subscriber;
+package com.omar.sec01.subscriber;
 
 import org.reactivestreams.Subscriber;
 import org.reactivestreams.Subscription;

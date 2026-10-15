@@ -1,4 +1,4 @@
-package com.omar;
+package com.omar.sec01;
 
 /*
    1. publisher does not produce data unless subscriber requests for it.
@@ -21,8 +21,8 @@ Useful when you want to swap implementations.
 */
 
 
-import com.omar.publisher.PublisherImpl;
-import com.omar.subscriber.SubscriberImpl;
+import com.omar.sec01.publisher.PublisherImpl;
+import com.omar.sec01.subscriber.SubscriberImpl;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
