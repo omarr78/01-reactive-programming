@@ -1,9 +1,15 @@
 package com.omar.sec04;
 
 import com.omar.common.Util;
+import com.omar.sec01.subscriber.SubscriberImpl;
+import com.omar.sec04.client.ExternalServiceClient;
+import com.omar.sec04.helper.NameGenerator;
+import org.reactivestreams.Subscription;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import reactor.core.publisher.BaseSubscriber;
 import reactor.core.publisher.Flux;
+import reactor.core.scheduler.Schedulers;
 
 import java.util.List;
 
@@ -33,6 +39,14 @@ public class Demo {
          * to support multiple subscribers without throwing an IllegalStateException.
          */
         // fluxFromStream();
+
+        // fluxRange();
+
+        // logOperator();
+
+        // FluxVsList();
+
+        nonBlockingIoStream();
     }
 
     public static void fluxJust() {
@@ -110,5 +124,141 @@ public class Demo {
         flux.subscribe(Util.subscriber("Stream Sub 1"));
         log.info("============================");
         flux.subscribe(Util.subscriber("Stream Sub 2"));
+    }
+
+    public static void fluxRange() {
+        // assignment - generate 10 random first names
+        Flux.range(1, 10) // start the start number and the end with (start + end) - 1
+                .map(i -> i + ". " + Util.faker().name().firstName())
+                .subscribe(Util.subscriber());
+    }
+
+    public static void logOperator() {
+        // ========================================================================
+        // CASE 1: Basic Log Operator (Unbounded Request)
+        // ========================================================================
+        // The log() operator acts as a middleman, printing all reactive signals.
+        // It sees the raw data BEFORE the map() transformation happens.
+        log.info("====== Case 1: Basic Log ======");
+
+        Flux.range(1, 5)
+                .log() // Logs: onSubscribe, request(unbounded), onNext(1 to 5), onComplete
+                .map(i -> i + ". " + Util.faker().name().firstName())
+                .subscribe(Util.subscriber()); // Util.subscriber() requests unbounded by default
+
+
+        // ========================================================================
+        // CASE 2: Bounded Request (Requesting only 3 items)
+        // ========================================================================
+        // If the subscriber only requests 3 items, the producer only emits 3.
+        // Notice: onComplete is NOT called because the producer still has items left.
+        log.info("\n====== Case 2: Bounded Request (3 items) ======");
+
+        Flux.range(1, 5)
+                .log() // Logs: request(3), then only 3 onNext signals, NO onComplete
+                .map(i -> i + ". " + Util.faker().name().firstName())
+                .subscribe(new BaseSubscriber<>() {
+                    @Override
+                    protected void hookOnSubscribe(Subscription subscription) {
+                        log.info("Subscribed! Requesting exactly 3 items...");
+                        request(3); // Explicitly request only 3 items instead of unbounded
+                    }
+                    @Override
+                    protected void hookOnNext(String value) {
+                        log.info("Received: {}", value);
+                    }
+                });
+
+        // ========================================================================
+        // CASE 3: Multiple Log Operators (Observing the Transformation)
+        // ========================================================================
+        // A single log() before map() only sees raw numbers (1, 2, 3...).
+        // To see the transformed names, we must add a SECOND log() AFTER map().
+        log.info("\n====== Case 3: Multiple Logs ======");
+
+        Flux.range(1, 5)
+                .log() // 1st log: sees raw integers (onNext(1), onNext(2)...)
+                .map(i -> i + ". " + Util.faker().name().firstName())
+                .log() // 2nd log: sees transformed strings (onNext("1. John")...)
+                .subscribe(Util.subscriber());
+
+        // ========================================================================
+        // CASE 4: Named Log Operators (Best Practice for Debugging)
+        // ========================================================================
+        // When chaining multiple logs, give them string tags.
+        // This makes the console output much easier to read and trace.
+        log.info("\n====== Case 4: Named Logs ======");
+
+        Flux.range(1, 5)
+                .log("1. Range-to-Map")       // Tagged log for the first segment
+                .map(i -> i + ". " + Util.faker().name().firstName())
+                .log("2. Map-to-Subscriber")  // Tagged log for the second segment
+                .subscribe(Util.subscriber());
+    }
+
+    public static void FluxVsList() {
+        // ==========================================
+        // 1. TRADITIONAL APPROACH (List)
+        // ==========================================
+        // Blocks the thread for 10 seconds. Nothing is printed until the very end.
+        log.info("--- Traditional List Approach ---");
+        var list = NameGenerator.getNamesList(10);
+        System.out.println(list);
+
+        // ==========================================
+        // 2. REACTIVE APPROACH (Flux) - Basic Subscribe
+        // ==========================================
+        // Prints names one by one every second. Highly responsive.
+        log.info("--- Reactive Flux Approach (Basic) ---");
+        NameGenerator.getNamesFlux(10)
+                .subscribe(Util.subscriber("Basic"));
+
+        log.info("--- REACTIVE APPROACH (Flux) - WITH subscribeOn ---");
+        // ==========================================
+        // 2. REACTIVE APPROACH (Flux) - WITH subscribeOn
+        // ==========================================
+        // subscribeOn moves the execution to a background thread!
+        NameGenerator.getNamesFlux(10)
+                .subscribeOn(Schedulers.boundedElastic()) // <--- MAGIC HAPPENS HERE
+                .subscribe(Util.subscriber("WITH subscribeOn"));
+
+        // ==========================================
+        // 3. REACTIVE APPROACH (Flux) - Early Cancellation
+        // ==========================================
+        // Demonstrates backpressure and the ability to cancel early.
+        log.info("--- Reactive Flux Approach (Early Cancellation) ---");
+        var subscriber = new SubscriberImpl();
+        NameGenerator.getNamesFlux(10)
+                .subscribe(subscriber);
+
+        // Request only 3 names initially
+        subscriber.getSubscription().request(3);
+
+        // Imagine we see the names and are satisfied with the results.
+        // We can cancel the subscription immediately!
+        // The producer will stop generating the remaining 7 names.
+        subscriber.getSubscription().cancel();
+
+        // Any further requests will be ignored because the subscription is canceled.
+        subscriber.getSubscription().request(3);
+
+        // keeps your main thread alive for 10 seconds, giving the boundedElastic thread enough time to finish processing the Flux.
+        Util.sleepSeconds(10);
+    }
+
+    public static void nonBlockingIoStream() {
+        var client = new ExternalServiceClient();
+
+        // Subscriber 1 independently consumes the stream
+        client.getNames()
+                .subscribe(Util.subscriber("sub1"));
+
+        // Subscriber 2 independently consumes the stream
+        client.getNames()
+                .subscribe(Util.subscriber("sub2"));
+
+        // Block the main thread for 8 seconds to allow the async stream to emit and process
+        // (The external service emits ~10 messages every 500ms)
+        Util.sleepSeconds(8);
     }
 }
