@@ -9,8 +9,10 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import reactor.core.publisher.BaseSubscriber;
 import reactor.core.publisher.Flux;
+import reactor.core.publisher.Mono;
 import reactor.core.scheduler.Schedulers;
 
+import java.time.Duration;
 import java.util.List;
 
 public class Demo {
@@ -46,7 +48,17 @@ public class Demo {
 
         // FluxVsList();
 
-        nonBlockingIoStream();
+        // nonBlockingIoStream();
+
+        // fluxInterval();
+
+        // fluxEmptyError();
+
+        // fluxDefer();
+
+        // fluxToMono();
+
+        monoToFlux();
     }
 
     public static void fluxJust() {
@@ -260,5 +272,88 @@ public class Demo {
         // Block the main thread for 8 seconds to allow the async stream to emit and process
         // (The external service emits ~10 messages every 500ms)
         Util.sleepSeconds(8);
+    }
+
+    public static void fluxInterval() {
+        // Emits an infinite sequence of numbers (0, 1, 2...) every 500ms
+        Flux.interval(Duration.ofMillis(500))
+                // Transforms each number into a random first name
+                .map(i -> Util.faker().name().firstName())
+                .subscribe(Util.subscriber());
+
+        // Keeps the main thread alive for 5s so the background thread has time to run
+        Util.sleepSeconds(5);
+    }
+
+    public static void fluxEmptyError() {
+        Flux.empty()
+                .subscribe(Util.subscriber());
+
+        log.info("============================");
+
+        Flux.error(new RuntimeException("oops"))
+                .subscribe(Util.subscriber());
+    }
+
+    public static void fluxDefer() {
+        log.info("🔴 --- WITHOUT Flux.defer (The Photograph) ---");
+        // Evaluated IMMEDIATELY when the code is assembled
+        Flux<Long> fluxWithoutDefer = Flux.just(System.currentTimeMillis());
+
+        Util.sleepSeconds(2); // Wait 2 seconds before anyone listens
+        fluxWithoutDefer.subscribe(Util.subscriber());
+
+        Util.sleepSeconds(1); // Wait 1 more second
+        fluxWithoutDefer.subscribe(Util.subscriber());
+
+
+        log.info("🟢 --- WITH Flux.defer (The Live Camera) ---");
+        // Creation is DELAYED until the exact moment of subscription
+        Flux<Long> fluxWithDefer = Flux.defer(() -> Flux.just(System.currentTimeMillis()));
+
+        Util.sleepSeconds(2); // Wait 2 seconds before anyone listens
+        fluxWithDefer.subscribe(Util.subscriber());
+
+        Util.sleepSeconds(1); // Wait 1 more second
+        fluxWithDefer.subscribe(Util.subscriber());
+    }
+
+    public static void fluxToMono() {
+        // Create a Flux that emits integers from 1 to 10
+        var flux = Flux.range(1, 10);
+
+        // Convert the Flux into a Mono (takes only the first emitted element)
+        Mono<Integer> monoFrom = Mono.from(flux);
+        monoFrom.subscribe(Util.subscriber("[Mono.from]"));
+
+        // Alternative shortcut to achieve the exact same thing (emits the first item as a Mono)
+        Mono<Integer> mono = flux.next();
+        mono.subscribe(Util.subscriber("[flux.next]"));
+    }
+
+    public static void monoToFlux() {
+        // Convert individual Monos into Fluxes and process/save them one by one
+        var mono1 = getUsername(1);
+        save(Flux.from(mono1));
+
+        var mono2 = getUsername(2);
+        save(Flux.from(mono2));
+
+        var mono3 = getUsername(3);
+        save(Flux.from(mono3)); // Note: This will trigger an error signal
+    }
+
+    private static Mono<String> getUsername(int userId) {
+        // Return a username, an empty result, or an error based on the ID
+        return switch (userId) {
+            case 1 -> Mono.just("Omar");
+            case 2 -> Mono.empty();
+            default -> Mono.error(new RuntimeException("Invalid input"));
+        };
+    }
+
+    private static void save(Flux<String> flux) {
+        // Subscribe to the Flux to trigger execution
+        flux.subscribe(Util.subscriber());
     }
 }

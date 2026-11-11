@@ -13,4 +13,14 @@ public class ExternalServiceClient extends AbstractHttpClient {
                 // Convert the stream of ByteBuf into a stream (Flux) of Strings
                 .asString();
     }
+
+    public Flux<Integer> getStockPrices() {
+        return this.httpClient.get()
+                .uri("/demo02/stock/stream")
+                // Get the response body as a Flux of ByteBuf (raw network bytes)
+                .responseContent()
+                // Convert the stream of ByteBuf into a stream (Flux) of Strings
+                .asString()
+                .map(Integer::parseInt);
+    }
 }
